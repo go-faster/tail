@@ -1,4 +1,4 @@
-# Tail
+# Tail [![Go Reference](https://pkg.go.dev/badge/github.com/ernado/tail.svg)](https://pkg.go.dev/github.com/ernado/tail)  [![ci](https://github.com/ernado/tail/actions/workflows/ci.yml/badge.svg)](https://github.com/ernado/tail/actions/workflows/ci.yml)
 
 Package tail implements file tailing with [fsnotify](https://github.com/fsnotify/fsnotify).
 
