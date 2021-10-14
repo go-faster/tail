@@ -25,10 +25,15 @@ import (
 func main() {
 	t := tail.File("/var/log/application.txt", tail.Config{
 		Follow:        true,        // tail -f
-		NotifyTimeout: time.Minute, // force polling at least once a minute
 		BufferSize:    1024 * 128,  // 128 kb for internal reader buffer
 
+		// Force polling if zero events are observed for longer than a minute.
+		// Optional, just a safeguard to be sure that we are not stuck forever
+		// if we miss inotify event.
+		NotifyTimeout: time.Minute,
+
 		// You can specify position to start tailing, same as Seek arguments.
+		// For example, you can use the latest processed Line.Location() value.
 		Location: &tail.Location{Whence: io.SeekStart, Offset: 0},
 	})
 	ctx := context.Background()
