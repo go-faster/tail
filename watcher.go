@@ -36,13 +36,15 @@ type watchHandler func(ctx context.Context, e event) error
 
 // watcher uses newWatcher to monitor file changes.
 type watcher struct {
+	t    *Tracker
 	lg   *zap.Logger
 	name string
 	size int64
 }
 
-func newWatcher(lg *zap.Logger, filename string) *watcher {
+func newWatcher(lg *zap.Logger, t *Tracker, filename string) *watcher {
 	return &watcher{
+		t:    t,
 		name: filepath.Clean(filename),
 		size: 0,
 		lg:   lg,
@@ -50,11 +52,11 @@ func newWatcher(lg *zap.Logger, filename string) *watcher {
 }
 
 func (w *watcher) WaitExists(ctx context.Context) error {
-	if err := watchCreate(w.name); err != nil {
+	if err := w.t.watchCreate(w.name); err != nil {
 		return xerrors.Errorf("create: %w", err)
 	}
 	defer func() {
-		if err := removeWatchCreate(w.name); err != nil {
+		if err := w.t.removeWatchCreate(w.name); err != nil {
 			w.lg.Debug("Failed to remove create event handler", zap.Error(err))
 		}
 	}()
@@ -65,7 +67,7 @@ func (w *watcher) WaitExists(ctx context.Context) error {
 		return err
 	}
 
-	events := listenEvents(w.name)
+	events := w.t.listenEvents(w.name)
 
 	for {
 		select {
@@ -91,14 +93,14 @@ func (w *watcher) WaitExists(ctx context.Context) error {
 }
 
 func (w *watcher) WatchEvents(ctx context.Context, offset int64, fn watchHandler) error {
-	if err := watchFile(w.name); err != nil {
+	if err := w.t.watchFile(w.name); err != nil {
 		return xerrors.Errorf("watch: %w", err)
 	}
 
 	w.size = offset
-	events := listenEvents(w.name)
+	events := w.t.listenEvents(w.name)
 	defer func() {
-		if err := removeWatch(w.name); err != nil {
+		if err := w.t.removeWatchName(w.name); err != nil {
 			w.lg.Debug("Failed to remove event handler", zap.Error(err))
 		}
 	}()

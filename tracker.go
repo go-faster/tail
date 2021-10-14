@@ -8,9 +8,12 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"go.uber.org/zap"
+	"golang.org/x/xerrors"
 )
 
-type inotifyTracker struct {
+// Tracker multiplexes fsnotify events.
+type Tracker struct {
+	init      sync.Once
 	mux       sync.Mutex
 	watcher   *fsnotify.Watcher
 	chans     map[string]chan fsnotify.Event
@@ -31,100 +34,112 @@ func (i *watchInfo) isCreate() bool {
 	return i.op == fsnotify.Create
 }
 
-var (
-	// globally shared inotifyTracker; ensures only one fsnotify.watcher is used
-	shared *inotifyTracker
-
-	// these are used to ensure the shared inotifyTracker is run exactly once
-	once  = sync.Once{}
-	goRun = func() {
-		shared = &inotifyTracker{
-			mux:       sync.Mutex{},
-			chans:     make(map[string]chan fsnotify.Event),
-			done:      make(map[string]chan bool),
-			watchNums: make(map[string]int),
-			watch:     make(chan *watchInfo),
-			remove:    make(chan *watchInfo),
-			error:     make(chan error),
-
-			// TODO: Allow changing logger
-			log: zap.NewNop(),
-		}
-		go shared.run()
+// NewTracker creates new custom *Tracker with provided logger.
+func NewTracker(log *zap.Logger) *Tracker {
+	return &Tracker{
+		chans:     make(map[string]chan fsnotify.Event),
+		done:      make(map[string]chan bool),
+		watchNums: make(map[string]int),
+		watch:     make(chan *watchInfo),
+		remove:    make(chan *watchInfo),
+		error:     make(chan error),
+		log:       log,
 	}
-)
+}
+
+var defaultTracker = NewTracker(zap.NewNop())
 
 // watchFile signals the run goroutine to begin watching the input filename
-func watchFile(name string) error {
-	return watch(&watchInfo{
+func (t *Tracker) watchFile(name string) error {
+	return t.watchInfo(&watchInfo{
 		name: name,
 	})
 }
 
 // watchCreate watches create signals the run goroutine to begin watching the input filename
 // if call the watchCreate function, don't call the Cleanup, call the removeWatchCreate
-func watchCreate(name string) error {
-	return watch(&watchInfo{
+func (t *Tracker) watchCreate(name string) error {
+	return t.watchInfo(&watchInfo{
 		op:   fsnotify.Create,
 		name: name,
 	})
 }
 
-func watch(winfo *watchInfo) error {
-	// start running the shared inotifyTracker if not already running
-	once.Do(goRun)
+func (t *Tracker) watchInfo(winfo *watchInfo) error {
+	if err := t.ensure(); err != nil {
+		return err
+	}
 
 	winfo.name = filepath.Clean(winfo.name)
-	shared.watch <- winfo
-	return <-shared.error
+	t.watch <- winfo
+	return <-t.error
 }
 
-// removeWatch signals the run goroutine to remove the watch for the input filename
-func removeWatch(name string) error {
-	return remove(&watchInfo{
+// removeWatchInfo signals the run goroutine to remove the watch for the input filename
+func (t *Tracker) removeWatchName(name string) error {
+	return t.removeInfo(&watchInfo{
 		name: name,
 	})
 }
 
 // removeWatchCreate signals the run goroutine to remove the
 // watch for the input filename.
-func removeWatchCreate(name string) error {
-	return remove(&watchInfo{
+func (t *Tracker) removeWatchCreate(name string) error {
+	return t.removeInfo(&watchInfo{
 		op:   fsnotify.Create,
 		name: name,
 	})
 }
 
-func remove(winfo *watchInfo) error {
-	// start running the shared inotifyTracker if not already running
-	once.Do(goRun)
+func (t *Tracker) ensure() (err error) {
+	if t == nil {
+		return xerrors.New("Tracker: invalid call (nil)")
+	}
+
+	t.init.Do(func() {
+		w, wErr := fsnotify.NewWatcher()
+		if wErr != nil {
+			err = wErr
+			return
+		}
+
+		t.watcher = w
+		go t.run()
+	})
+	return err
+}
+
+func (t *Tracker) removeInfo(winfo *watchInfo) error {
+	if err := t.ensure(); err != nil {
+		return err
+	}
 
 	winfo.name = filepath.Clean(winfo.name)
-	shared.mux.Lock()
-	done := shared.done[winfo.name]
+	t.mux.Lock()
+	done := t.done[winfo.name]
 	if done != nil {
-		delete(shared.done, winfo.name)
+		delete(t.done, winfo.name)
 		close(done)
 	}
-	shared.mux.Unlock()
+	t.mux.Unlock()
 
-	shared.remove <- winfo
-	return <-shared.error
+	t.remove <- winfo
+	return <-t.error
 }
 
 // listenEvents returns a channel to which FileEvents corresponding to the input filename
-// will be sent. This channel will be closed when removeWatch is called on this
+// will be sent. This channel will be closed when removeWatchInfo is called on this
 // filename.
-func listenEvents(name string) <-chan fsnotify.Event {
-	shared.mux.Lock()
-	defer shared.mux.Unlock()
+func (t *Tracker) listenEvents(name string) <-chan fsnotify.Event {
+	t.mux.Lock()
+	defer t.mux.Unlock()
 
-	return shared.chans[name]
+	return t.chans[name]
 }
 
 // watchFlags calls fsnotify.WatchFlags for the input filename and flags, creating
 // a new watcher if the previous watcher was closed.
-func (t *inotifyTracker) addWatch(winfo *watchInfo) error {
+func (t *Tracker) addWatchInfo(winfo *watchInfo) error {
 	t.mux.Lock()
 	defer t.mux.Unlock()
 
@@ -152,9 +167,9 @@ func (t *inotifyTracker) addWatch(winfo *watchInfo) error {
 	return err
 }
 
-// removeWatch calls fsnotify.removeWatch for the input filename and closes the
+// removeWatchInfo calls fsnotify.Remove for the input filename and closes the
 // corresponding events channel.
-func (t *inotifyTracker) removeWatch(winfo *watchInfo) error {
+func (t *Tracker) removeWatchInfo(winfo *watchInfo) error {
 	t.mux.Lock()
 
 	ch := t.chans[winfo.name]
@@ -188,7 +203,7 @@ func (t *inotifyTracker) removeWatch(winfo *watchInfo) error {
 }
 
 // sendEvent sends the input event to the appropriate Tail.
-func (t *inotifyTracker) sendEvent(event fsnotify.Event) {
+func (t *Tracker) sendEvent(event fsnotify.Event) {
 	name := filepath.Clean(event.Name)
 
 	t.mux.Lock()
@@ -204,22 +219,15 @@ func (t *inotifyTracker) sendEvent(event fsnotify.Event) {
 	}
 }
 
-// run starts the goroutine in which the shared struct reads events from its
-// watcher's Event channel and sends the events to the appropriate Tail.
-func (t *inotifyTracker) run() {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		panic(err)
-	}
-	t.watcher = watcher
-
+// run starts reading from inotify events.
+func (t *Tracker) run() {
 	for {
 		select {
 		case winfo := <-t.watch:
-			t.error <- t.addWatch(winfo)
+			t.error <- t.addWatchInfo(winfo)
 
 		case winfo := <-t.remove:
-			t.error <- t.removeWatch(winfo)
+			t.error <- t.removeWatchInfo(winfo)
 
 		case event, ok := <-t.watcher.Events:
 			if !ok {

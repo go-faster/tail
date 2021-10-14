@@ -45,6 +45,5 @@ func main() {
 ## TODO
 - [ ] Decide on ergonomics of ErrStop
 - [ ] Tests for removing, tailing and creating events
-- [ ] Provide a way to set inotifyTracker logger
 - [ ] Benchmark
 - [ ] Windows support?

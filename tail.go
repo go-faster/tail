@@ -54,21 +54,14 @@ type Config struct {
 	BufferSize int
 	// Logger to use, optional.
 	Logger *zap.Logger
+	// Tracker is optional custom *Tracker.
+	Tracker *Tracker
 }
 
 // Handler is called on each log line.
 //
 // Implementation should not retain Line or Line.Data.
 type Handler func(ctx context.Context, l *Line) error
-
-// fileWatcher monitors file events.
-type fileWatcher interface {
-	// WaitExists blocks until the file comes into existence.
-	WaitExists(ctx context.Context) error
-
-	// WatchEvents calls h when file is truncated, deleted or modified.
-	WatchEvents(ctx context.Context, offset int64, h watchHandler) error
-}
 
 // Tailer implements file tailing.
 //
@@ -78,7 +71,7 @@ type Tailer struct {
 	name    string
 	file    *os.File
 	reader  *bufio.Reader
-	watcher fileWatcher
+	watcher *watcher
 	lg      *zap.Logger
 }
 
@@ -97,10 +90,15 @@ func File(filename string, cfg Config) *Tailer {
 	if cfg.BufferSize <= minBufSize {
 		cfg.BufferSize = defaultBufSize
 	}
+	if cfg.Tracker == nil {
+		cfg.Tracker = defaultTracker
+	}
+
 	return &Tailer{
-		cfg:  cfg,
-		name: filename,
-		lg:   cfg.Logger,
+		cfg:     cfg,
+		name:    filename,
+		lg:      cfg.Logger,
+		watcher: newWatcher(cfg.Logger.Named("watch"), cfg.Tracker, filename),
 	}
 }
 
@@ -176,8 +174,6 @@ func (t *Tailer) Tail(ctx context.Context, h Handler) error {
 	if t == nil {
 		return xerrors.New("incorrect Tailer call: Tailer is nil")
 	}
-
-	t.watcher = newWatcher(t.lg.Named("watch"), t.name)
 
 	defer t.closeFile()
 	if err := t.openFile(ctx); err != nil {
