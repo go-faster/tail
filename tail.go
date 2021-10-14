@@ -169,7 +169,7 @@ func (t *Tailer) readLine(buf []byte) ([]byte, error) {
 // Tail is blocking while calling Handler to reuse internal buffer and
 // reduce allocations.
 // Tail will call Handler in same sequence as lines are observed.
-// See Handler; for more info.
+// See Handler for more info.
 //
 // Can be called multiple times, but not concurrently.
 func (t *Tailer) Tail(ctx context.Context, h Handler) error {
@@ -177,7 +177,6 @@ func (t *Tailer) Tail(ctx context.Context, h Handler) error {
 		return xerrors.New("incorrect Tailer call: Tailer is nil")
 	}
 
-	t.lg.Debug("Using newWatcher")
 	t.watcher = newWatcher(t.lg.Named("watch"), t.name)
 
 	defer t.closeFile()
