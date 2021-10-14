@@ -25,7 +25,7 @@ import (
 func main() {
 	t := tail.File("/var/log/application.txt", tail.Config{
 		Follow:        true,        // tail -f
-		NotifyTimeout: time.Minute, // force pooling at least once a minute
+		NotifyTimeout: time.Minute, // force polling at least once a minute
 		BufferSize:    1024 * 128,  // 128 kb for internal reader buffer
 
 		// You can specify position to start tailing, same as Seek arguments.
