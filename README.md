@@ -41,3 +41,9 @@ func main() {
 	}
 }
 ```
+
+## TODO
+- [ ] Decide on ergonomics of ErrStop
+- [ ] Tests for removing, tailing and creating events
+- [ ] Benchmark
+- [ ] Windows support?
