@@ -164,12 +164,12 @@ func (t *Tailer) readLine(buf []byte) ([]byte, error) {
 	}
 }
 
-// Tail opens file and starts tailing it, reporting observed lines to watchHandler.
+// Tail opens file and starts tailing it, reporting observed lines to Handler.
 //
-// Tail is blocking while calling watchHandler to reuse internal buffer and
+// Tail is blocking while calling Handler to reuse internal buffer and
 // reduce allocations.
-// Tail will call watchHandler in same sequence as lines are observed.
-// See watchHandler for more info.
+// Tail will call Handler in same sequence as lines are observed.
+// See Handler; for more info.
 //
 // Can be called multiple times, but not concurrently.
 func (t *Tailer) Tail(ctx context.Context, h Handler) error {
