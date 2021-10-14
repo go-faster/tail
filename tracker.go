@@ -35,6 +35,8 @@ func (i *watchInfo) isCreate() bool {
 }
 
 // NewTracker creates new custom *Tracker with provided logger.
+//
+// It is recommended to use it as singleton and create only once.
 func NewTracker(log *zap.Logger) *Tracker {
 	return &Tracker{
 		chans:     make(map[string]chan fsnotify.Event),
