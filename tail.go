@@ -31,6 +31,19 @@ func (l *Line) isBlank() bool {
 	return len(l.Data) == 0
 }
 
+// Location returns corresponding Location for Offset.
+//
+// Mostly convenience helper for using as Config.Location.
+func (l *Line) Location() Location {
+	if l == nil {
+		return Location{}
+	}
+	return Location{
+		Offset: l.Offset,
+		Whence: io.SeekStart,
+	}
+}
+
 // Location represents arguments to io.Seek.
 //
 // See https://golang.org/pkg/io/#SectionReader.Seek
