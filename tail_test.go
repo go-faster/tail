@@ -2,8 +2,12 @@ package tail
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
+	"math/big"
+	mathRand "math/rand"
 	"os"
 	"testing"
 	"time"
@@ -22,7 +26,7 @@ const (
 	line          = `[foo.go:1261] INFO: Some test log entry {"user_id": 410}`
 )
 
-func file(t *testing.T) *os.File {
+func file(t testing.TB) *os.File {
 	t.Helper()
 
 	f, err := os.CreateTemp(t.TempDir(), "*.txt")
@@ -30,7 +34,6 @@ func file(t *testing.T) *os.File {
 	t.Cleanup(func() {
 		_ = f.Close()
 	})
-	t.Logf("Created test file %s", f.Name())
 
 	return f
 }
@@ -216,4 +219,65 @@ func TestMultipleTails(t *testing.T) {
 	})
 
 	require.NoError(t, g.Wait())
+}
+
+func randString(reader io.Reader, n int) (string, error) {
+	const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	ret := make([]byte, n)
+	for i := 0; i < n; i++ {
+		num, err := rand.Int(reader, big.NewInt(int64(len(letters))))
+		if err != nil {
+			return "", err
+		}
+		ret[i] = letters[num.Int64()]
+	}
+
+	return string(ret), nil
+}
+
+func BenchmarkTailer_Tail(b *testing.B) {
+	const lines = 1024 * 512
+
+	for _, lineLen := range []int{
+		32,
+		128,
+		512,
+		1024,
+		1024 * 4,
+	} {
+		b.Run(fmt.Sprintf("%d", lineLen), func(b *testing.B) {
+			f := file(b)
+
+			s := mathRand.NewSource(1)
+			r := mathRand.New(s)
+			randLine, err := randString(r, lineLen)
+			require.NoError(b, err)
+
+			var totalBytes int64
+			for i := 0; i < lines; i++ {
+				n, err := fmt.Fprintln(f, randLine)
+				require.NoError(b, err)
+				totalBytes += int64(n)
+			}
+			require.NoError(b, f.Close())
+
+			ctx := context.Background()
+			h := func(ctx context.Context, l *Line) error {
+				return nil
+			}
+
+			b.ReportAllocs()
+			b.SetBytes(totalBytes)
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				t := File(f.Name(), Config{
+					Follow: false,
+				})
+				if err := t.Tail(ctx, h); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
 }
