@@ -2,6 +2,7 @@ package tail
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -14,20 +15,34 @@ import (
 	"golang.org/x/xerrors"
 )
 
+const (
+	lines         = 1024
+	notifyTimeout = time.Millisecond * 500
+	timeout       = time.Second * 5
+	line          = `[foo.go:1261] INFO: Some test log entry {"user_id": 410}`
+)
+
+func file(t *testing.T) *os.File {
+	t.Helper()
+
+	f, err := os.CreateTemp(t.TempDir(), "*.txt")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = f.Close()
+	})
+	t.Logf("Created test file %s", f.Name())
+
+	return f
+}
+
 func TestTail_Run(t *testing.T) {
 	t.Run("Follow", func(t *testing.T) {
-		// Create test file.
-		f, err := os.CreateTemp(t.TempDir(), "*.txt")
-		require.NoError(t, err)
-		name := f.Name()
-		t.Log(name)
-		const lines int = 512
-
+		f := file(t)
 		g, ctx := errgroup.WithContext(context.Background())
 
 		var gotLines int
 		h := func(ctx context.Context, l *Line) error {
-			assert.Equal(t, "Some line", string(l.Data))
+			assert.Equal(t, line, string(l.Data))
 			gotLines++
 			t.Log("Got line", gotLines)
 
@@ -39,10 +54,10 @@ func TestTail_Run(t *testing.T) {
 		}
 
 		g.Go(func() error {
-			if err := File(name, Config{
+			if err := File(f.Name(), Config{
 				Follow:        true,
 				Logger:        zaptest.NewLogger(t),
-				NotifyTimeout: time.Millisecond * 500,
+				NotifyTimeout: notifyTimeout,
 			}).Tail(ctx, h); !xerrors.Is(err, ErrStop) {
 				return xerrors.Errorf("run: %w", err)
 			}
@@ -53,7 +68,7 @@ func TestTail_Run(t *testing.T) {
 			t.Log("Writing")
 
 			for i := 0; i < lines; i++ {
-				if _, err := fmt.Fprintln(f, "Some line"); err != nil {
+				if _, err := fmt.Fprintln(f, line); err != nil {
 					return xerrors.Errorf("write: %w", err)
 				}
 				if i%(lines/5) == 0 {
@@ -75,14 +90,9 @@ func TestTail_Run(t *testing.T) {
 		require.Equal(t, lines, gotLines)
 	})
 	t.Run("NoFollow", func(t *testing.T) {
-		// Prepare test file.
-		f, err := os.CreateTemp(t.TempDir(), "*.txt")
-		require.NoError(t, err)
-		name := f.Name()
-		t.Log(name)
-		const lines int = 1024
+		f := file(t)
 		for i := 0; i < lines; i++ {
-			_, err := fmt.Fprintln(f, "Some line")
+			_, err := fmt.Fprintln(f, line)
 			require.NoError(t, err)
 		}
 		require.NoError(t, f.Close())
@@ -91,24 +101,17 @@ func TestTail_Run(t *testing.T) {
 		ctx := context.Background()
 		var gotLines int
 		h := func(ctx context.Context, l *Line) error {
-			assert.Equal(t, "Some line", string(l.Data))
+			assert.Equal(t, line, string(l.Data))
 			gotLines++
 			return nil
 		}
 
 		// Verify result.
-		require.NoError(t, File(name, Config{}).Tail(ctx, h))
+		require.NoError(t, File(f.Name(), Config{}).Tail(ctx, h))
 		require.Equal(t, lines, gotLines)
 	})
 	t.Run("Position", func(t *testing.T) {
-		f, err := os.CreateTemp(t.TempDir(), "*.txt")
-		require.NoError(t, err)
-		defer func() { _ = f.Close() }()
-
-		name := f.Name()
-		t.Log(name)
-		const lines int = 512
-
+		f := file(t)
 		g, ctx := errgroup.WithContext(context.Background())
 
 		var (
@@ -116,7 +119,7 @@ func TestTail_Run(t *testing.T) {
 			offset   int64
 		)
 		h := func(ctx context.Context, l *Line) error {
-			assert.Equal(t, "Some line", string(l.Data))
+			assert.Equal(t, line, string(l.Data))
 			gotLines++
 			offset = l.Offset
 			if gotLines == lines {
@@ -126,10 +129,10 @@ func TestTail_Run(t *testing.T) {
 		}
 
 		g.Go(func() error {
-			if err := File(name, Config{
+			if err := File(f.Name(), Config{
 				Follow:        true,
 				Logger:        zaptest.NewLogger(t),
-				NotifyTimeout: time.Millisecond * 500,
+				NotifyTimeout: notifyTimeout,
 			}).Tail(ctx, h); !xerrors.Is(err, ErrStop) {
 				return xerrors.Errorf("run: %w", err)
 			}
@@ -137,12 +140,12 @@ func TestTail_Run(t *testing.T) {
 		})
 		writeLines := func() error {
 			for i := 0; i < lines; i++ {
-				if _, err := fmt.Fprintln(f, "Some line"); err != nil {
+				if _, err := fmt.Fprintln(f, line); err != nil {
 					return xerrors.Errorf("write: %w", err)
 				}
 			}
 			if err := f.Sync(); err != nil {
-				return xerrors.Errorf("clise: %w", err)
+				return xerrors.Errorf("sync: %w", err)
 			}
 			return nil
 		}
@@ -153,9 +156,64 @@ func TestTail_Run(t *testing.T) {
 		require.NoError(t, writeLines())
 
 		gotLines = 0
-		require.ErrorIs(t, File(name, Config{
+		require.ErrorIs(t, File(f.Name(), Config{
 			Logger:   zaptest.NewLogger(t),
 			Location: &Location{Offset: offset},
 		}).Tail(context.Background(), h), ErrStop)
 	})
+}
+
+func TestMultipleTails(t *testing.T) {
+	f := file(t)
+
+	lg := zaptest.NewLogger(t)
+	tracker := NewTracker(lg)
+	g, ctx := errgroup.WithContext(context.Background())
+
+	const (
+		tailers = 3
+		lines   = 10
+	)
+
+	// Prepare multiple tailers and start them.
+	for i := 0; i < tailers; i++ {
+		tailer := File(f.Name(), Config{
+			NotifyTimeout: notifyTimeout,
+			Follow:        true,
+			Logger:        lg.Named(fmt.Sprintf("t%d", i)),
+			Tracker:       tracker,
+		})
+		g.Go(func() error {
+			var gotLines int
+			// Ensure that each tailer got all lines.
+			h := func(ctx context.Context, l *Line) error {
+				assert.Equal(t, line, string(l.Data))
+				gotLines++
+				if gotLines == lines {
+					return ErrStop
+				}
+				return nil
+			}
+
+			ctx, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
+
+			if err := tailer.Tail(ctx, h); !errors.Is(err, ErrStop) {
+				return err
+			}
+
+			return nil
+		})
+	}
+	// Write lines.
+	g.Go(func() error {
+		for i := 0; i < lines; i++ {
+			if _, err := fmt.Fprintln(f, line); err != nil {
+				return err
+			}
+		}
+		return f.Close()
+	})
+
+	require.NoError(t, g.Wait())
 }

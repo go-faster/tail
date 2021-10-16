@@ -202,10 +202,12 @@ func (t *Tailer) Tail(ctx context.Context, h Handler) error {
 
 	t.resetReader()
 	t.lg.Debug("Opened")
+	defer t.lg.Debug("Done")
 
 	// Reading line-by-line.
 	line := &Line{
 		// Pre-allocate some buffer.
+		// TODO(ernado): Limit buffer growth to prevent OOM
 		Data: make([]byte, 0, t.cfg.BufferSize),
 	}
 
@@ -215,13 +217,15 @@ func (t *Tailer) Tail(ctx context.Context, h Handler) error {
 		}
 
 		// Grab the offset in case we need to back up in the event of a half-line.
-		t.lg.Debug("Offset")
 		offset, err := t.offset()
 		if err != nil {
 			return xerrors.Errorf("offset: %w", err)
 		}
 
 		line.Offset = offset
+		if e := t.lg.Check(zapcore.DebugLevel, "Offset"); e != nil {
+			e.Write(zap.Int64("offset", offset))
+		}
 
 		var readErr error
 		t.lg.Debug("Reading line")
@@ -237,6 +241,7 @@ func (t *Tailer) Tail(ctx context.Context, h Handler) error {
 			t.lg.Debug("Got EOF")
 			if !line.isBlank() {
 				// Reporting new non-blank line.
+				// TODO(ernado): Handle half-read lines when got EOF, but not \n
 				if err := h(ctx, line); err != nil {
 					return xerrors.Errorf("handle: %w", err)
 				}

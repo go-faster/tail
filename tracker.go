@@ -158,15 +158,16 @@ func (t *Tracker) addWatchInfo(winfo *watchInfo) error {
 		name = filepath.Dir(name)
 	}
 
-	var err error
-	// already in newWatcher watch
-	if t.watchNums[name] == 0 {
-		err = t.watcher.Add(name)
+	if t.watchNums[name] > 0 {
+		// Already watching.
+		return nil
 	}
-	if err == nil {
-		t.watchNums[name]++
+	if err := t.watcher.Add(name); err != nil {
+		return xerrors.Errorf("add: %w", err)
 	}
-	return err
+
+	t.watchNums[name]++
+	return nil
 }
 
 // removeWatchInfo calls fsnotify.Remove for the input filename and closes the
