@@ -221,6 +221,64 @@ func TestMultipleTails(t *testing.T) {
 	require.NoError(t, g.Wait())
 }
 
+func TestDelete(t *testing.T) {
+	f := file(t)
+
+	lg := zaptest.NewLogger(t)
+	tracker := NewTracker(lg)
+	g, ctx := errgroup.WithContext(context.Background())
+
+	const lines = 10
+
+	for i := 0; i < lines; i++ {
+		if _, err := fmt.Fprintln(f, line); err != nil {
+			t.Fatal(err)
+		}
+	}
+	require.NoError(t, f.Close())
+
+	tailer := File(f.Name(), Config{
+		NotifyTimeout: notifyTimeout,
+		Follow:        true,
+		Logger:        lg,
+		Tracker:       tracker,
+	})
+
+	read := make(chan struct{})
+	g.Go(func() error {
+		var gotLines int
+		// Ensure that each tailer got all lines.
+		h := func(ctx context.Context, l *Line) error {
+			assert.Equal(t, line, string(l.Data))
+			gotLines++
+			if gotLines == lines {
+				close(read)
+			}
+			return nil
+		}
+
+		ctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+
+		if err := tailer.Tail(ctx, h); !errors.Is(err, ErrStop) {
+			return err
+		}
+
+		return nil
+	})
+	// Write lines.
+	g.Go(func() error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-read: // ok
+		}
+		return os.Remove(f.Name())
+	})
+
+	require.NoError(t, g.Wait())
+}
+
 func randString(reader io.Reader, n int) (string, error) {
 	const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 	ret := make([]byte, n)

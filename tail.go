@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"syscall"
 	"time"
 
 	"go.uber.org/zap"
@@ -253,7 +254,10 @@ func (t *Tailer) Tail(ctx context.Context, h Handler) error {
 			}
 			t.lg.Debug("Waiting for changes")
 			if err := t.waitForChanges(ctx, offset); err != nil {
-				if xerrors.Is(err, ErrStop) || xerrors.Is(err, context.DeadlineExceeded) {
+				if xerrors.Is(err, ErrStop) {
+					return nil
+				}
+				if xerrors.Is(err, context.DeadlineExceeded) {
 					continue
 				}
 				return xerrors.Errorf("wait: %w", err)
@@ -280,7 +284,7 @@ func (t *Tailer) waitForChanges(ctx context.Context, pos int64) error {
 		defer cancel()
 	}
 
-	return t.watcher.WatchEvents(ctx, pos, func(ctx context.Context, e event) error {
+	if err := t.watcher.WatchEvents(ctx, pos, func(ctx context.Context, e event) error {
 		switch e {
 		case evModified:
 			t.lg.Debug("Modified")
@@ -298,7 +302,14 @@ func (t *Tailer) waitForChanges(ctx context.Context, pos int64) error {
 		default:
 			return xerrors.Errorf("invalid event %v", e)
 		}
-	})
+	}); err != nil {
+		if os.IsNotExist(err) || errors.Is(err, syscall.ENOENT) {
+			return ErrStop
+		}
+		return xerrors.Errorf("watch: %w", err)
+	}
+
+	return nil
 }
 
 func (t *Tailer) resetReader() { t.reader = bufio.NewReaderSize(t.file, t.cfg.BufferSize) }
