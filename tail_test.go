@@ -236,7 +236,7 @@ func randString(reader io.Reader, n int) (string, error) {
 }
 
 func BenchmarkTailer_Tail(b *testing.B) {
-	const lines = 1024 * 512
+	const lines = 1024 * 50
 
 	for _, lineLen := range []int{
 		32,
