@@ -7,8 +7,8 @@ import (
 	"syscall"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/ogen-go/errors"
 	"go.uber.org/zap"
-	"golang.org/x/xerrors"
 )
 
 // Tracker multiplexes fsnotify events.
@@ -95,7 +95,7 @@ func (t *Tracker) removeWatchCreate(name string) error {
 
 func (t *Tracker) ensure() (err error) {
 	if t == nil {
-		return xerrors.New("Tracker: invalid call (nil)")
+		return errors.New("Tracker: invalid call (nil)")
 	}
 
 	t.init.Do(func() {
@@ -163,7 +163,7 @@ func (t *Tracker) addWatchInfo(winfo *watchInfo) error {
 		return nil
 	}
 	if err := t.watcher.Add(name); err != nil {
-		return xerrors.Errorf("add: %w", err)
+		return errors.Wrap(err, "add")
 	}
 
 	t.watchNums[name]++

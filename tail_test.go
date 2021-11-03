@@ -3,7 +3,6 @@ package tail
 import (
 	"context"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -12,11 +11,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ogen-go/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 	"golang.org/x/sync/errgroup"
-	"golang.org/x/xerrors"
 )
 
 const (
@@ -61,8 +60,8 @@ func TestTail_Run(t *testing.T) {
 				Follow:        true,
 				Logger:        zaptest.NewLogger(t),
 				NotifyTimeout: notifyTimeout,
-			}).Tail(ctx, h); !xerrors.Is(err, ErrStop) {
-				return xerrors.Errorf("run: %w", err)
+			}).Tail(ctx, h); !errors.Is(err, ErrStop) {
+				return errors.Wrap(err, "run")
 			}
 
 			return nil
@@ -72,19 +71,19 @@ func TestTail_Run(t *testing.T) {
 
 			for i := 0; i < lines; i++ {
 				if _, err := fmt.Fprintln(f, line); err != nil {
-					return xerrors.Errorf("write: %w", err)
+					return errors.Wrap(err, "write")
 				}
 				if i%(lines/5) == 0 {
 					if err := f.Sync(); err != nil {
-						return xerrors.Errorf("sync: %w", err)
+						return errors.Wrap(err, "sync")
 					}
 				}
 			}
 			if err := f.Sync(); err != nil {
-				return xerrors.Errorf("sync: %w", err)
+				return errors.Wrap(err, "sync")
 			}
 			if err := f.Close(); err != nil {
-				return xerrors.Errorf("close: %w", err)
+				return errors.Wrap(err, "close")
 			}
 			t.Log("Wrote")
 			return nil
@@ -136,19 +135,19 @@ func TestTail_Run(t *testing.T) {
 				Follow:        true,
 				Logger:        zaptest.NewLogger(t),
 				NotifyTimeout: notifyTimeout,
-			}).Tail(ctx, h); !xerrors.Is(err, ErrStop) {
-				return xerrors.Errorf("run: %w", err)
+			}).Tail(ctx, h); !errors.Is(err, ErrStop) {
+				return errors.Wrap(err, "run")
 			}
 			return nil
 		})
 		writeLines := func() error {
 			for i := 0; i < lines; i++ {
 				if _, err := fmt.Fprintln(f, line); err != nil {
-					return xerrors.Errorf("write: %w", err)
+					return errors.Wrap(err, "write")
 				}
 			}
 			if err := f.Sync(); err != nil {
-				return xerrors.Errorf("sync: %w", err)
+				return errors.Wrap(err, "sync")
 			}
 			return nil
 		}

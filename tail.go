@@ -4,15 +4,15 @@ package tail
 import (
 	"bufio"
 	"context"
-	"errors"
 	"io"
 	"os"
 	"syscall"
 	"time"
 
+	"github.com/ogen-go/errors"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"golang.org/x/xerrors"
 )
 
 // ErrStop is returned when the tail of a file has been marked to be stopped.
@@ -123,7 +123,7 @@ func File(filename string, cfg Config) *Tailer {
 func (t *Tailer) offset() (offset int64, err error) {
 	offset, err = t.file.Seek(0, io.SeekCurrent)
 	if err != nil {
-		return offset, xerrors.Errorf("seek: %w", err)
+		return offset, errors.Wrap(err, "seek")
 	}
 	offset -= int64(t.reader.Buffered())
 	return offset, nil
@@ -151,12 +151,12 @@ func (t *Tailer) openFile(ctx context.Context) error {
 					)
 				}
 				if err := t.watcher.WaitExists(ctx); err != nil {
-					return xerrors.Errorf("wait exists: %w", err)
+					return errors.Wrap(err, "wait exists")
 				}
 
 				continue
 			}
-			return xerrors.Errorf("open: %w", err)
+			return errors.Wrap(err, "open")
 		}
 		return nil
 	}
@@ -186,18 +186,18 @@ func (t *Tailer) readLine(buf []byte) ([]byte, error) {
 // Can be called multiple times, but not concurrently.
 func (t *Tailer) Tail(ctx context.Context, h Handler) error {
 	if t == nil {
-		return xerrors.New("incorrect Tailer call: Tailer is nil")
+		return errors.New("incorrect Tailer call: Tailer is nil")
 	}
 
 	defer t.closeFile()
 	if err := t.openFile(ctx); err != nil {
-		return xerrors.Errorf("openFile: %w", err)
+		return errors.Wrap(err, "openFile")
 	}
 
 	if loc := t.cfg.Location; loc != nil {
 		// Seek requested.
 		if _, err := t.file.Seek(loc.Offset, loc.Whence); err != nil {
-			return xerrors.Errorf("seek: %w", err)
+			return errors.Wrap(err, "seek")
 		}
 	}
 
@@ -220,7 +220,7 @@ func (t *Tailer) Tail(ctx context.Context, h Handler) error {
 		// Grab the offset in case we need to back up in the event of a half-line.
 		offset, err := t.offset()
 		if err != nil {
-			return xerrors.Errorf("offset: %w", err)
+			return errors.Wrap(err, "offset")
 		}
 
 		line.Offset = offset
@@ -244,7 +244,7 @@ func (t *Tailer) Tail(ctx context.Context, h Handler) error {
 				// Reporting new non-blank line.
 				// TODO(ernado): Handle half-read lines when got EOF, but not \n
 				if err := h(ctx, line); err != nil {
-					return xerrors.Errorf("handle: %w", err)
+					return errors.Wrap(err, "handle")
 				}
 			}
 			if !t.cfg.Follow {
@@ -254,19 +254,19 @@ func (t *Tailer) Tail(ctx context.Context, h Handler) error {
 			}
 			t.lg.Debug("Waiting for changes")
 			if err := t.waitForChanges(ctx, offset); err != nil {
-				if xerrors.Is(err, ErrStop) {
+				if errors.Is(err, ErrStop) {
 					return nil
 				}
-				if xerrors.Is(err, context.DeadlineExceeded) {
+				if errors.Is(err, context.DeadlineExceeded) {
 					continue
 				}
-				return xerrors.Errorf("wait: %w", err)
+				return errors.Wrap(err, "wait")
 			}
 		default:
-			return xerrors.Errorf("read: %w", readErr)
+			return errors.Wrap(readErr, "read")
 		case nil:
 			if err := h(ctx, line); err != nil {
-				return xerrors.Errorf("handle: %w", err)
+				return errors.Wrap(err, "handle")
 			}
 		}
 	}
@@ -295,18 +295,18 @@ func (t *Tailer) waitForChanges(ctx context.Context, pos int64) error {
 		case evTruncated:
 			t.lg.Info("Re-opening truncated file")
 			if err := t.openFile(ctx); err != nil {
-				return xerrors.Errorf("open file: %w", err)
+				return errors.Wrap(err, "open file")
 			}
 			t.resetReader()
 			return nil
 		default:
-			return xerrors.Errorf("invalid event %v", e)
+			return errors.Errorf("invalid event %v", e)
 		}
 	}); err != nil {
 		if os.IsNotExist(err) || errors.Is(err, syscall.ENOENT) {
 			return ErrStop
 		}
-		return xerrors.Errorf("watch: %w", err)
+		return errors.Wrap(err, "watch")
 	}
 
 	return nil

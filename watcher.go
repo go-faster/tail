@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/ogen-go/errors"
 	"go.uber.org/zap"
-	"golang.org/x/xerrors"
 )
 
 // event that happened with file.
@@ -53,7 +53,7 @@ func newWatcher(lg *zap.Logger, t *Tracker, filename string) *watcher {
 
 func (w *watcher) WaitExists(ctx context.Context) error {
 	if err := w.t.watchCreate(w.name); err != nil {
-		return xerrors.Errorf("create: %w", err)
+		return errors.Wrap(err, "create")
 	}
 	defer func() {
 		if err := w.t.removeWatchCreate(w.name); err != nil {
@@ -73,15 +73,15 @@ func (w *watcher) WaitExists(ctx context.Context) error {
 		select {
 		case evt, ok := <-events:
 			if !ok {
-				return xerrors.New("newWatcher watcher has been closed")
+				return errors.New("newWatcher watcher has been closed")
 			}
 			evtName, err := filepath.Abs(evt.Name)
 			if err != nil {
-				return xerrors.Errorf("abs: %w", err)
+				return errors.Wrap(err, "abs")
 			}
 			fwFilename, err := filepath.Abs(w.name)
 			if err != nil {
-				return xerrors.Errorf("abs: %w", err)
+				return errors.Wrap(err, "abs")
 			}
 			if evtName == fwFilename {
 				return nil
@@ -94,7 +94,7 @@ func (w *watcher) WaitExists(ctx context.Context) error {
 
 func (w *watcher) WatchEvents(ctx context.Context, offset int64, fn watchHandler) error {
 	if err := w.t.watchFile(w.name); err != nil {
-		return xerrors.Errorf("watch: %w", err)
+		return errors.Wrap(err, "watch")
 	}
 
 	w.size = offset
@@ -138,7 +138,7 @@ func (w *watcher) WatchEvents(ctx context.Context, offset int64, fn watchHandler
 				if os.IsNotExist(err) {
 					return fn(ctx, evDeleted)
 				}
-				return xerrors.Errorf("stat: %w", err)
+				return errors.Wrap(err, "stat")
 			}
 			w.size = fi.Size()
 			if prevSize > 0 && prevSize > w.size {
