@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/ogen-go/errors"
-
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
