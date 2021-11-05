@@ -19,7 +19,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/ernado/tail"
+	"github.com/go-faster/tail"
 )
 
 func main() {
