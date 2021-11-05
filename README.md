@@ -6,7 +6,7 @@ Fork of [nxadm/tail](https://github.com/nxadm/tail), simplified, reworked and op
 Currently, supports only Linux.
 
 ```console
-go get github.com/ernado/tail
+go get github.com/go-faster/tail
 ```
 
 ```go
