@@ -1,4 +1,4 @@
-module github.com/ernado/tail
+module github.com/go-faster/tail
 
 go 1.17
 
