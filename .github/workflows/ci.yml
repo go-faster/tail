@@ -19,6 +19,7 @@ jobs:
           - amd64
         runner:
           - ubuntu-latest
+          - macos-latest
         go:
           - 1.16
           - 1.17
