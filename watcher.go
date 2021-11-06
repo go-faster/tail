@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/ogen-go/errors"
+	"github.com/go-faster/errors"
 	"go.uber.org/zap"
 )
 

@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ogen-go/errors"
+	"github.com/go-faster/errors"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
