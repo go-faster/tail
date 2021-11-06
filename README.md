@@ -3,7 +3,7 @@
 Package tail implements file tailing with [fsnotify](https://github.com/fsnotify/fsnotify).
 
 Fork of [nxadm/tail](https://github.com/nxadm/tail), simplified, reworked and optimized.
-Currently, supports only Linux.
+Currently, supports only Linux and Darwin.
 
 ```console
 go get github.com/go-faster/tail
