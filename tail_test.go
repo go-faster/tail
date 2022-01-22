@@ -49,7 +49,7 @@ func TestTail_Run(t *testing.T) {
 			t.Log("Got line", gotLines)
 
 			if gotLines == lines {
-				return ErrStop
+				return errStop
 			}
 
 			return nil
@@ -60,7 +60,7 @@ func TestTail_Run(t *testing.T) {
 				Follow:        true,
 				Logger:        zaptest.NewLogger(t),
 				NotifyTimeout: notifyTimeout,
-			}).Tail(ctx, h); !errors.Is(err, ErrStop) {
+			}).Tail(ctx, h); !errors.Is(err, errStop) {
 				return errors.Wrap(err, "run")
 			}
 
@@ -125,7 +125,7 @@ func TestTail_Run(t *testing.T) {
 			gotLines++
 			offset = l.Offset
 			if gotLines == lines {
-				return ErrStop
+				return errStop
 			}
 			return nil
 		}
@@ -135,7 +135,7 @@ func TestTail_Run(t *testing.T) {
 				Follow:        true,
 				Logger:        zaptest.NewLogger(t),
 				NotifyTimeout: notifyTimeout,
-			}).Tail(ctx, h); !errors.Is(err, ErrStop) {
+			}).Tail(ctx, h); !errors.Is(err, errStop) {
 				return errors.Wrap(err, "run")
 			}
 			return nil
@@ -161,7 +161,7 @@ func TestTail_Run(t *testing.T) {
 		require.ErrorIs(t, File(f.Name(), Config{
 			Logger:   zaptest.NewLogger(t),
 			Location: &Location{Offset: offset},
-		}).Tail(context.Background(), h), ErrStop)
+		}).Tail(context.Background(), h), errStop)
 	})
 }
 
@@ -192,7 +192,7 @@ func TestMultipleTails(t *testing.T) {
 				assert.Equal(t, line, string(l.Data))
 				gotLines++
 				if gotLines == lines {
-					return ErrStop
+					return errStop
 				}
 				return nil
 			}
@@ -200,7 +200,7 @@ func TestMultipleTails(t *testing.T) {
 			ctx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
 
-			if err := tailer.Tail(ctx, h); !errors.Is(err, ErrStop) {
+			if err := tailer.Tail(ctx, h); !errors.Is(err, errStop) {
 				return err
 			}
 
@@ -259,7 +259,7 @@ func TestDelete(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 
-		if err := tailer.Tail(ctx, h); !errors.Is(err, ErrStop) {
+		if err := tailer.Tail(ctx, h); !errors.Is(err, errStop) {
 			return err
 		}
 

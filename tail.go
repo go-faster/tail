@@ -14,8 +14,8 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// ErrStop is returned when the tail of a file has been marked to be stopped.
-var ErrStop = errors.New("tail should now stop")
+// errStop is returned when the tail of a file has been marked to be stopped.
+var errStop = errors.New("tail should now stop")
 
 // Line of file.
 type Line struct {
@@ -29,6 +29,13 @@ func (l *Line) isBlank() bool {
 		return true
 	}
 	return len(l.Data) == 0
+}
+
+func (l *Line) final() bool {
+	if l.isBlank() {
+		return false
+	}
+	return l.Data[len(l.Data)-1] == '\n'
 }
 
 // Location returns corresponding Location for Offset.
@@ -63,7 +70,7 @@ type Config struct {
 	NotifyTimeout time.Duration
 	// Follow file after reaching io.EOF, waiting for new lines.
 	Follow bool
-	// BufferSize for internal reader, optional.
+	// Initial internal buffer size, optional.
 	BufferSize int
 	// Logger to use, optional.
 	Logger *zap.Logger
@@ -229,31 +236,34 @@ func (t *Tailer) Tail(ctx context.Context, h Handler) error {
 
 		var readErr error
 		t.lg.Debug("Reading line")
-		line.Data, readErr = t.readLine(line.Data[:0])
-
-		// Remove newline at the end of lineData.
-		if len(line.Data) > 0 && line.Data[len(line.Data)-1] == '\n' {
-			line.Data = line.Data[:len(line.Data)-1]
-		}
+		line.Data, readErr = t.readLine(line.Data)
 
 		switch readErr {
 		case io.EOF:
 			t.lg.Debug("Got EOF")
-			if !line.isBlank() {
-				// Reporting new non-blank line.
-				// TODO(ernado): Handle half-read lines when got EOF, but not \n
+			if line.final() {
+				// Reporting only final lines, i.e. those ending with newline.
+				// Line can become final later.
 				if err := h(ctx, line); err != nil {
 					return errors.Wrap(err, "handle")
 				}
+				line.Data = line.Data[:0] // reset buffer
 			}
 			if !t.cfg.Follow {
 				// End of file reached, but not following.
 				// Stopping.
+				if !line.isBlank() && !line.final() {
+					// Reporting non-final line because we are not following
+					// and there are no chances for it to become final.
+					if err := h(ctx, line); err != nil {
+						return errors.Wrap(err, "handle")
+					}
+				}
 				return nil
 			}
 			t.lg.Debug("Waiting for changes")
 			if err := t.waitForChanges(ctx, offset); err != nil {
-				if errors.Is(err, ErrStop) {
+				if errors.Is(err, errStop) {
 					return nil
 				}
 				if errors.Is(err, context.DeadlineExceeded) {
@@ -267,6 +277,7 @@ func (t *Tailer) Tail(ctx context.Context, h Handler) error {
 			if err := h(ctx, line); err != nil {
 				return errors.Wrap(err, "handle")
 			}
+			line.Data = line.Data[:0] // reset buffer
 		}
 	}
 }
@@ -290,7 +301,7 @@ func (t *Tailer) waitForChanges(ctx context.Context, pos int64) error {
 			return nil
 		case evDeleted:
 			t.lg.Debug("Stopping: deleted")
-			return ErrStop
+			return errStop
 		case evTruncated:
 			t.lg.Info("Re-opening truncated file")
 			if err := t.openFile(ctx); err != nil {
@@ -303,7 +314,7 @@ func (t *Tailer) waitForChanges(ctx context.Context, pos int64) error {
 		}
 	}); err != nil {
 		if os.IsNotExist(err) || errors.Is(err, syscall.ENOENT) {
-			return ErrStop
+			return errStop
 		}
 		return errors.Wrap(err, "watch")
 	}

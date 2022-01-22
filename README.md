@@ -48,8 +48,5 @@ func main() {
 ```
 
 ## TODO
-- [ ] Decide on ergonomics of ErrStop
 - [ ] Tests for removing, tailing and creating events
-- [x] Benchmarks
-- [ ] Decide how to deal with partial lines (i.e. EOF, but without `\n`)
 - [ ] Decide on Windows support
