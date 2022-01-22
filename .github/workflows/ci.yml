@@ -18,7 +18,7 @@ jobs:
         arch:
           - amd64
         runner:
-          - macos-latest
+          - ubuntu-latest
         go:
           - 1.17
         include:
