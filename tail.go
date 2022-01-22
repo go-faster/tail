@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/go-faster/errors"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -75,13 +76,22 @@ type Config struct {
 	// Logger to use, optional.
 	Logger *zap.Logger
 	// Tracker is optional custom *Tracker.
-	Tracker *Tracker
+	Tracker Tracker
 }
 
 // Handler is called on each log line.
 //
 // Implementation should not retain Line or Line.Data.
 type Handler func(ctx context.Context, l *Line) error
+
+// Tracker tracks file changes.
+type Tracker interface {
+	watchFile(name string) error
+	watchCreate(name string) error
+	removeWatchName(name string) error
+	removeWatchCreate(name string) error
+	listenEvents(name string) <-chan fsnotify.Event
+}
 
 // Tailer implements file tailing.
 //

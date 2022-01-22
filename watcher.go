@@ -36,13 +36,13 @@ type watchHandler func(ctx context.Context, e event) error
 
 // watcher uses newWatcher to monitor file changes.
 type watcher struct {
-	t    *Tracker
+	t    Tracker
 	lg   *zap.Logger
 	name string
 	size int64
 }
 
-func newWatcher(lg *zap.Logger, t *Tracker, filename string) *watcher {
+func newWatcher(lg *zap.Logger, t Tracker, filename string) *watcher {
 	return &watcher{
 		t:    t,
 		name: filepath.Clean(filename),

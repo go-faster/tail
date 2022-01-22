@@ -169,7 +169,7 @@ func TestMultipleTails(t *testing.T) {
 	f := file(t)
 
 	lg := zaptest.NewLogger(t)
-	tracker := NewTracker(lg)
+	tr := NewTracker(lg)
 	g, ctx := errgroup.WithContext(context.Background())
 
 	const (
@@ -183,7 +183,7 @@ func TestMultipleTails(t *testing.T) {
 			NotifyTimeout: notifyTimeout,
 			Follow:        true,
 			Logger:        lg.Named(fmt.Sprintf("t%d", i)),
-			Tracker:       tracker,
+			Tracker:       tr,
 		})
 		g.Go(func() error {
 			var gotLines int
@@ -224,7 +224,7 @@ func TestDelete(t *testing.T) {
 	f := file(t)
 
 	lg := zaptest.NewLogger(t)
-	tracker := NewTracker(lg)
+	tr := NewTracker(lg)
 	g, ctx := errgroup.WithContext(context.Background())
 
 	const lines = 10
@@ -240,7 +240,7 @@ func TestDelete(t *testing.T) {
 		NotifyTimeout: notifyTimeout,
 		Follow:        true,
 		Logger:        lg,
-		Tracker:       tracker,
+		Tracker:       tr,
 	})
 
 	read := make(chan struct{})

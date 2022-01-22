@@ -11,8 +11,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// Tracker multiplexes fsnotify events.
-type Tracker struct {
+// tracker multiplexes fsnotify events.
+type tracker struct {
 	init      sync.Once
 	mux       sync.Mutex
 	watcher   *fsnotify.Watcher
@@ -34,11 +34,11 @@ func (i *watchInfo) isCreate() bool {
 	return i.op == fsnotify.Create
 }
 
-// NewTracker creates new custom *Tracker with provided logger.
+// NewTracker creates new custom Tracker with provided logger.
 //
 // It is recommended to use it as singleton and create only once.
-func NewTracker(log *zap.Logger) *Tracker {
-	return &Tracker{
+func NewTracker(log *zap.Logger) Tracker {
+	return &tracker{
 		chans:     make(map[string]chan fsnotify.Event),
 		done:      make(map[string]chan bool),
 		watchNums: make(map[string]int),
@@ -52,7 +52,7 @@ func NewTracker(log *zap.Logger) *Tracker {
 var defaultTracker = NewTracker(zap.NewNop())
 
 // watchFile signals the run goroutine to begin watching the input filename
-func (t *Tracker) watchFile(name string) error {
+func (t *tracker) watchFile(name string) error {
 	return t.watchInfo(&watchInfo{
 		name: name,
 	})
@@ -60,14 +60,14 @@ func (t *Tracker) watchFile(name string) error {
 
 // watchCreate watches create signals the run goroutine to begin watching the input filename
 // if call the watchCreate function, don't call the Cleanup, call the removeWatchCreate
-func (t *Tracker) watchCreate(name string) error {
+func (t *tracker) watchCreate(name string) error {
 	return t.watchInfo(&watchInfo{
 		op:   fsnotify.Create,
 		name: name,
 	})
 }
 
-func (t *Tracker) watchInfo(winfo *watchInfo) error {
+func (t *tracker) watchInfo(winfo *watchInfo) error {
 	if err := t.ensure(); err != nil {
 		return err
 	}
@@ -78,7 +78,7 @@ func (t *Tracker) watchInfo(winfo *watchInfo) error {
 }
 
 // removeWatchInfo signals the run goroutine to remove the watch for the input filename
-func (t *Tracker) removeWatchName(name string) error {
+func (t *tracker) removeWatchName(name string) error {
 	return t.removeInfo(&watchInfo{
 		name: name,
 	})
@@ -86,16 +86,16 @@ func (t *Tracker) removeWatchName(name string) error {
 
 // removeWatchCreate signals the run goroutine to remove the
 // watch for the input filename.
-func (t *Tracker) removeWatchCreate(name string) error {
+func (t *tracker) removeWatchCreate(name string) error {
 	return t.removeInfo(&watchInfo{
 		op:   fsnotify.Create,
 		name: name,
 	})
 }
 
-func (t *Tracker) ensure() (err error) {
+func (t *tracker) ensure() (err error) {
 	if t == nil {
-		return errors.New("Tracker: invalid call (nil)")
+		return errors.New("tracker: invalid call (nil)")
 	}
 
 	t.init.Do(func() {
@@ -111,7 +111,7 @@ func (t *Tracker) ensure() (err error) {
 	return err
 }
 
-func (t *Tracker) removeInfo(winfo *watchInfo) error {
+func (t *tracker) removeInfo(winfo *watchInfo) error {
 	if err := t.ensure(); err != nil {
 		return err
 	}
@@ -132,7 +132,7 @@ func (t *Tracker) removeInfo(winfo *watchInfo) error {
 // listenEvents returns a channel to which FileEvents corresponding to the input filename
 // will be sent. This channel will be closed when removeWatchInfo is called on this
 // filename.
-func (t *Tracker) listenEvents(name string) <-chan fsnotify.Event {
+func (t *tracker) listenEvents(name string) <-chan fsnotify.Event {
 	t.mux.Lock()
 	defer t.mux.Unlock()
 
@@ -141,7 +141,7 @@ func (t *Tracker) listenEvents(name string) <-chan fsnotify.Event {
 
 // watchFlags calls fsnotify.WatchFlags for the input filename and flags, creating
 // a new watcher if the previous watcher was closed.
-func (t *Tracker) addWatchInfo(winfo *watchInfo) error {
+func (t *tracker) addWatchInfo(winfo *watchInfo) error {
 	t.mux.Lock()
 	defer t.mux.Unlock()
 
@@ -172,7 +172,7 @@ func (t *Tracker) addWatchInfo(winfo *watchInfo) error {
 
 // removeWatchInfo calls fsnotify.Remove for the input filename and closes the
 // corresponding events channel.
-func (t *Tracker) removeWatchInfo(winfo *watchInfo) error {
+func (t *tracker) removeWatchInfo(winfo *watchInfo) error {
 	t.mux.Lock()
 
 	ch := t.chans[winfo.name]
@@ -206,7 +206,7 @@ func (t *Tracker) removeWatchInfo(winfo *watchInfo) error {
 }
 
 // sendEvent sends the input event to the appropriate Tail.
-func (t *Tracker) sendEvent(event fsnotify.Event) {
+func (t *tracker) sendEvent(event fsnotify.Event) {
 	name := filepath.Clean(event.Name)
 
 	t.mux.Lock()
@@ -223,7 +223,7 @@ func (t *Tracker) sendEvent(event fsnotify.Event) {
 }
 
 // run starts reading from inotify events.
-func (t *Tracker) run() {
+func (t *tracker) run() {
 	for {
 		select {
 		case winfo := <-t.watch:
