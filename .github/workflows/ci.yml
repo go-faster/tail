@@ -20,18 +20,15 @@ jobs:
         runner:
           - ubuntu-latest
         go:
-          - 1.17
+          - 1.18
         include:
           - arch: 386
             runner: ubuntu-latest
-            go: 1.17
+            go: 1.18
           - arch: amd64
             runner: ubuntu-latest
             flags: "-race"
-            go: 1.17
-          - arch: arm64
-            runner: self-hosted
-            go: 1.17
+            go: 1.18
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
