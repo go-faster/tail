@@ -3,7 +3,7 @@ module github.com/go-faster/tail
 go 1.17
 
 require (
-	github.com/fsnotify/fsnotify v1.5.1
+	github.com/fsnotify/fsnotify v1.5.3
 	github.com/go-faster/errors v0.5.0
 	github.com/stretchr/testify v1.7.1
 	go.uber.org/zap v1.21.0
