@@ -1,11 +1,12 @@
 module github.com/go-faster/tail
 
-go 1.18
+go 1.21
 
 require (
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/go-faster/errors v0.6.1
 	github.com/stretchr/testify v1.8.4
+	go.uber.org/atomic v1.11.0
 	go.uber.org/zap v1.25.0
 	golang.org/x/sync v0.3.0
 )

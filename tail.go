@@ -11,6 +11,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/go-faster/errors"
+	"go.uber.org/atomic"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -101,6 +102,7 @@ type Tailer struct {
 	name    string
 	file    *os.File
 	reader  *bufio.Reader
+	proxy   *offsetProxy
 	watcher *watcher
 	lg      *zap.Logger
 }
@@ -132,17 +134,20 @@ func File(filename string, cfg Config) *Tailer {
 	}
 }
 
-// offset returns the file's current offset and error if any.
-//
-// NB: can be not accurate
-// TODO(ernado): what does it mean exactly?
-func (t *Tailer) offset() (offset int64, err error) {
-	offset, err = t.file.Seek(0, io.SeekCurrent)
-	if err != nil {
-		return offset, errors.Wrap(err, "seek")
-	}
-	offset -= int64(t.reader.Buffered())
-	return offset, nil
+type offsetProxy struct {
+	Reader io.Reader
+	Offset int64
+}
+
+func (o *offsetProxy) Read(p []byte) (n int, err error) {
+	n, err = o.Reader.Read(p)
+	o.Offset += int64(n)
+	return n, err
+}
+
+// offset returns the file's current offset.
+func (t *Tailer) offset() int64 {
+	return t.proxy.Offset - int64(t.reader.Buffered())
 }
 
 func (t *Tailer) closeFile() {
@@ -173,6 +178,14 @@ func (t *Tailer) openFile(ctx context.Context) error {
 				continue
 			}
 			return errors.Wrap(err, "open")
+		}
+		offset, err := t.file.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return errors.Wrap(err, "seek")
+		}
+		t.proxy = &offsetProxy{
+			Reader: t.file,
+			Offset: offset,
 		}
 		return nil
 	}
@@ -228,17 +241,20 @@ func (t *Tailer) Tail(ctx context.Context, h Handler) error {
 		Data: make([]byte, 0, t.cfg.BufferSize),
 	}
 
+	// Reduce lock contention.
+	var done atomic.Bool
+	go func() {
+		<-ctx.Done()
+		done.Store(true)
+	}()
+
 	for {
-		if err := ctx.Err(); err != nil {
+		if done.Load() {
 			return ctx.Err()
 		}
 
 		// Grab the offset in case we need to back up in the event of a half-line.
-		offset, err := t.offset()
-		if err != nil {
-			return errors.Wrap(err, "offset")
-		}
-
+		offset := t.offset()
 		line.Offset = offset
 		if e := t.lg.Check(zapcore.DebugLevel, "Offset"); e != nil {
 			e.Write(zap.Int64("offset", offset))
@@ -332,4 +348,6 @@ func (t *Tailer) waitForChanges(ctx context.Context, pos int64) error {
 	return nil
 }
 
-func (t *Tailer) resetReader() { t.reader = bufio.NewReaderSize(t.file, t.cfg.BufferSize) }
+func (t *Tailer) resetReader() {
+	t.reader = bufio.NewReaderSize(t.proxy, t.cfg.BufferSize)
+}
