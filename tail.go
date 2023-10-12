@@ -159,7 +159,7 @@ func (t *Tailer) closeFile() {
 	t.file = nil
 }
 
-func (t *Tailer) openFile(ctx context.Context) error {
+func (t *Tailer) openFile(ctx context.Context, loc Location) error {
 	t.closeFile()
 	for {
 		var err error
@@ -179,7 +179,7 @@ func (t *Tailer) openFile(ctx context.Context) error {
 			}
 			return errors.Wrap(err, "open")
 		}
-		offset, err := t.file.Seek(0, io.SeekCurrent)
+		offset, err := t.file.Seek(loc.Offset, loc.Whence)
 		if err != nil {
 			return errors.Wrap(err, "seek")
 		}
@@ -219,8 +219,18 @@ func (t *Tailer) Tail(ctx context.Context, h Handler) error {
 	}
 
 	defer t.closeFile()
-	if err := t.openFile(ctx); err != nil {
-		return errors.Wrap(err, "openFile")
+	{
+		loc := Location{
+			Offset: 0,
+			Whence: io.SeekCurrent,
+		}
+		if t.cfg.Location != nil {
+			loc = *t.cfg.Location
+		}
+
+		if err := t.openFile(ctx, loc); err != nil {
+			return errors.Wrap(err, "openFile")
+		}
 	}
 
 	if loc := t.cfg.Location; loc != nil {
@@ -297,13 +307,13 @@ func (t *Tailer) Tail(ctx context.Context, h Handler) error {
 				}
 				return errors.Wrap(err, "wait")
 			}
-		default:
-			return errors.Wrap(readErr, "read")
 		case nil:
 			if err := h(ctx, line); err != nil {
 				return errors.Wrap(err, "handle")
 			}
 			line.Data = line.Data[:0] // reset buffer
+		default:
+			return errors.Wrap(readErr, "read")
 		}
 	}
 }
@@ -330,7 +340,10 @@ func (t *Tailer) waitForChanges(ctx context.Context, pos int64) error {
 			return errStop
 		case evTruncated:
 			t.lg.Info("Re-opening truncated file")
-			if err := t.openFile(ctx); err != nil {
+			if err := t.openFile(ctx, Location{
+				Offset: 0,
+				Whence: io.SeekStart,
+			}); err != nil {
 				return errors.Wrap(err, "open file")
 			}
 			t.resetReader()
