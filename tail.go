@@ -258,6 +258,7 @@ func (t *Tailer) Tail(ctx context.Context, h Handler) error {
 		done.Store(true)
 	}()
 
+	debugEnabled := t.lg.Core().Enabled(zapcore.DebugLevel)
 	for {
 		if done.Load() {
 			return ctx.Err()
@@ -266,17 +267,18 @@ func (t *Tailer) Tail(ctx context.Context, h Handler) error {
 		// Grab the offset in case we need to back up in the event of a half-line.
 		offset := t.offset()
 		line.Offset = offset
-		if e := t.lg.Check(zapcore.DebugLevel, "Offset"); e != nil {
-			e.Write(zap.Int64("offset", offset))
+		var readErr error
+		if debugEnabled {
+			t.lg.Debug("Reading line", zap.Int64("offset", offset))
 		}
 
-		var readErr error
-		t.lg.Debug("Reading line")
 		line.Data, readErr = t.readLine(line.Data)
 
 		switch readErr {
 		case io.EOF:
-			t.lg.Debug("Got EOF")
+			if debugEnabled {
+				t.lg.Debug("Got EOF")
+			}
 			if line.final() {
 				// Reporting only final lines, i.e. those ending with newline.
 				// Line can become final later.
@@ -297,7 +299,9 @@ func (t *Tailer) Tail(ctx context.Context, h Handler) error {
 				}
 				return nil
 			}
-			t.lg.Debug("Waiting for changes")
+			if debugEnabled {
+				t.lg.Debug("Waiting for changes")
+			}
 			if err := t.waitForChanges(ctx, offset); err != nil {
 				if errors.Is(err, errStop) {
 					return nil
